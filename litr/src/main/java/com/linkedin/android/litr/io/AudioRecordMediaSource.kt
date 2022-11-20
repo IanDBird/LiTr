@@ -1,7 +1,9 @@
 package com.linkedin.android.litr.io
 
 import android.media.*
+import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import com.linkedin.android.litr.MimeType
 import com.linkedin.android.litr.exception.MediaSourceException
 import java.nio.ByteBuffer
@@ -10,6 +12,7 @@ import java.nio.ByteBuffer
  * An implementation of MediaSource, which utilizes Android's {@link AudioRecord} to record audio
  * from a given audio source (i.e. the device's microphone).
  */
+@RequiresApi(Build.VERSION_CODES.M)
 class AudioRecordMediaSource(
         private val audioSource: Int = DEFAULT_AUDIO_SOURCE,
         private val sampleRate: Int = DEFAULT_SAMPLE_RATE,
@@ -104,9 +107,10 @@ class AudioRecordMediaSource(
         }
 
         // Read the next audio sample from the recorder. As per the AudioRecord documentation, we
-        // need to leave some buffer for the AudioRecord to continue to queue too.
+        // need to leave some buffer for the AudioRecord to continue to queue too. We also don't
+        // want to block waiting for more data, we'll take whatever is available.
         val targetSize = (bufferSize / 2).coerceAtMost(buffer.capacity())
-        val readBytes = audioRecord?.read(buffer, targetSize) ?: -1
+        val readBytes = audioRecord?.read(buffer, targetSize, AudioRecord.READ_NON_BLOCKING) ?: -1
 
         // We look at how much data has been returned, to know the duration of that sample. We
         // therefore know when the next sample will start, which we track.
