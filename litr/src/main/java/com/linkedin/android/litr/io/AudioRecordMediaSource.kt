@@ -1,0 +1,172 @@
+package com.linkedin.android.litr.io
+
+import android.media.*
+import android.util.Log
+import com.linkedin.android.litr.MimeType
+import com.linkedin.android.litr.exception.MediaSourceException
+import java.nio.ByteBuffer
+
+/**
+ * An implementation of MediaSource, which utilizes Android's {@link AudioRecord} to record audio
+ * from a given audio source (i.e. the device's microphone).
+ */
+class AudioRecordMediaSource(
+        private val audioSource: Int = DEFAULT_AUDIO_SOURCE,
+        private val sampleRate: Int = DEFAULT_SAMPLE_RATE,
+        private val channelConfig: Int = DEFAULT_CHANNEL_CONFIG,
+        private val channelCount: Int = DEFAULT_CHANNEL_COUNT
+) : MediaSource {
+
+    // Compute the appropriate buffer size based upon the audio configuration.
+    private val bufferSize: Int by lazy {
+        AudioRecord.getMinBufferSize(sampleRate, channelConfig, AUDIO_FORMAT) * 8
+    }
+
+    // Compute the number of bytes per microsecond of audio.
+    private val bytesPerUs: Double by lazy {
+        (sampleRate * BYTES_PER_SAMPLE * channelCount) / 1000000.0
+    }
+
+    // The AudioRecord instance used to record the audio source.
+    private var audioRecord: AudioRecord? = null
+
+    // We track the amount of 16-bit PCM we have returned and calculate its duration, in order to
+    // know the presentation time of the next sample.
+    private var nextSampleTimeUs = 0L
+    private var sampleIncrementUs = 0L
+    private var totalDurationUs = 0L
+
+    private var isRecording = false
+
+    @Synchronized
+    fun start() {
+        createAudioRecord()
+
+        // Check to make sure the AudioRecord instance is initialized.
+        if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+            Log.e(TAG, "Error initializing AudioRecord")
+            throw MediaSourceException(
+                    MediaSourceException.Error.DATA_SOURCE,
+                    null,
+                    error("Error initializing AudioRecord: ${audioRecord?.state}"))
+        }
+
+        // Start recording.
+        audioRecord?.startRecording()
+        isRecording = true
+    }
+
+    private fun createAudioRecord() {
+        audioRecord = AudioRecord(
+                audioSource,
+                sampleRate,
+                channelConfig,
+                AUDIO_FORMAT,
+                bufferSize
+        )
+    }
+
+    @Synchronized
+    fun stop() {
+        if (isRecording) {
+            // Stop recording.
+            audioRecord?.stop()
+            isRecording = false
+        }
+    }
+
+    override fun getOrientationHint() = 0
+
+    override fun getTrackCount() = 1
+
+    override fun getTrackFormat(track: Int) = MediaFormat.createAudioFormat(
+            MimeType.AUDIO_RAW,
+            sampleRate,
+            channelCount
+    ).apply {
+        setInteger(MEDIA_FORMAT_PCM_KEY, AudioFormat.ENCODING_PCM_16BIT)
+    }
+
+    override fun selectTrack(track: Int) {
+        // Since we only support a single (audio) track, there is nothing to select.
+    }
+
+    override fun seekTo(position: Long, mode: Int) {
+        // We don't support seeking, since we're recording live.
+    }
+
+    override fun getSampleTrackIndex() = 0
+
+    override fun readSampleData(buffer: ByteBuffer, offset: Int): Int {
+        // If the recording has been stopped, then there are no more samples to be read.
+        if (!isRecording) {
+            return -1
+        }
+
+        // Read the next audio sample from the recorder. As per the AudioRecord documentation, we
+        // need to leave some buffer for the AudioRecord to continue to queue too.
+        val targetSize = (bufferSize / 2).coerceAtMost(buffer.capacity())
+        val readBytes = audioRecord?.read(buffer, targetSize) ?: -1
+
+        // We look at how much data has been returned, to know the duration of that sample. We
+        // therefore know when the next sample will start, which we track.
+        sampleIncrementUs = (readBytes / bytesPerUs).toLong()
+        return readBytes
+    }
+
+    override fun getSampleTime(): Long {
+        // If the recording has been stopped, then there are no more samples to be read.
+        if (!isRecording) {
+            return -1
+        }
+
+        val sampleTime = nextSampleTimeUs
+        nextSampleTimeUs += sampleIncrementUs
+        totalDurationUs += sampleIncrementUs
+        return sampleTime
+    }
+
+    override fun getSampleFlags(): Int {
+        // If the recording has been stopped, then any further samples read should report the end of
+        // the stream.
+        if (!isRecording) {
+            return MediaCodec.BUFFER_FLAG_END_OF_STREAM
+        }
+
+        return 0
+    }
+
+    override fun advance() {
+        // Nothing to advance.
+    }
+
+    override fun release() {
+        audioRecord?.stop()
+        audioRecord?.release()
+        audioRecord = null
+
+        nextSampleTimeUs = 0L
+        sampleIncrementUs = 0L
+
+        if (totalDurationUs > 0L) {
+            Log.i(TAG, "Audio Duration: $totalDurationUs")
+        }
+
+        totalDurationUs = 0L
+    }
+
+    override fun getSize() = -1L
+
+    companion object {
+        private val TAG = AudioRecordMediaSource::class.simpleName
+
+        private const val MEDIA_FORMAT_PCM_KEY = "pcm-encoding"
+        private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+        private const val BYTES_PER_SAMPLE = 2
+
+        const val DEFAULT_AUDIO_SOURCE = MediaRecorder.AudioSource.MIC
+        const val DEFAULT_SAMPLE_RATE = 44100
+        const val DEFAULT_CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
+        const val DEFAULT_CHANNEL_COUNT = 1
+    }
+}
