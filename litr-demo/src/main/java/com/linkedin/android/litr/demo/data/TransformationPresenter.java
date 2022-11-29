@@ -50,6 +50,8 @@ import com.linkedin.android.litr.io.MediaSource;
 import com.linkedin.android.litr.io.MediaTarget;
 import com.linkedin.android.litr.io.MockVideoMediaSource;
 import com.linkedin.android.litr.io.WavMediaTarget;
+import com.linkedin.android.litr.muxers.NativeMediaMuxerMediaTarget;
+import com.linkedin.android.litr.muxers.OutputFormats;
 import com.linkedin.android.litr.render.AudioRenderer;
 import com.linkedin.android.litr.render.GlVideoRenderer;
 import com.linkedin.android.litr.utils.TransformationUtil;
@@ -765,11 +767,12 @@ public class TransformationPresenter {
                 transformationState,
                 targetMedia);
 
-        try {
-            MediaTarget mediaTarget = new MediaMuxerMediaTarget(targetMedia.targetFile.getPath(),
+        //try {
+            MediaTarget mediaTarget = new NativeMediaMuxerMediaTarget(
+                    targetMedia.targetFile.getPath(),
                     2,
                     0,
-                    MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+                    OutputFormats.FORMAT_MPEG4);
 
             VideoTrackFormat videoTrackFormat = new VideoTrackFormat(0, MimeType.VIDEO_AVC);
             videoTrackFormat.width = videoMediaSource.getWidth();
@@ -815,9 +818,9 @@ public class TransformationPresenter {
                     transformationListener,
                     MediaTransformer.GRANULARITY_DEFAULT);
 
-        } catch (MediaTransformationException ex) {
-            Log.e(TAG, "Exception when trying to perform track operation", ex);
-        }
+        //} catch (MediaTransformationException ex) {
+        //    Log.e(TAG, "Exception when trying to perform track operation", ex);
+        //}
     }
 
     public void stopRecording(@NonNull AudioRecordMediaSource audioMediaSource,
