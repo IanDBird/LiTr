@@ -18,7 +18,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg")
     set(ffmpeg_binaries "${ffmpeg_location}/android-libs/${ANDROID_ABI}")
 else()
     set(ffmpeg_location "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg_bundled")
-    set(ffmpeg_binaries "${ffmpeg_location}/${ANDROID_ABI}")
+    set(ffmpeg_binaries "${ffmpeg_location}/android-libs/${ANDROID_ABI}")
 endif()
 
 foreach(ffmpeg_lib avutil avcodec avformat)
@@ -40,6 +40,9 @@ find_library(log-lib log)
 add_library(litr-muxers SHARED
         FFmpeg.h
         Logging.h
+        MediaMuxer.cpp
+        NativeLogger.cpp
+        NativeMediaMuxer.cpp
         )
 
 target_link_libraries(litr-muxers
@@ -48,5 +51,3 @@ target_link_libraries(litr-muxers
         PRIVATE avutil
         PRIVATE avformat
         PRIVATE ${log-lib})
-
-set_property(TARGET litr-muxers PROPERTY LINKER_LANGUAGE CXX)
